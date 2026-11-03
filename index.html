@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Groupe Parfait — Pilotage & Performance</title>
-  <link rel="stylesheet" href="style.css?v=20261021-4" />
+  <link rel="stylesheet" href="style.css?v=uxui-demo-1" />
   <link rel="stylesheet" href="cartography.css?v=20261021-4" />
   <link rel="stylesheet" href="training.css?v=20261029-1" />
   <link rel="stylesheet" href="connections.css?v=20261029-1" />
@@ -21,12 +21,12 @@
       </div>
 
       <nav class="nav">
-        <button class="nav-item active" data-view="overview"><span>▦</span> Vue d'ensemble</button>
-        <button class="nav-item" data-view="companies"><span>▤</span> Entreprises</button>
-        <button class="nav-item" data-view="performance"><span>↗</span> Performance</button>
-        <button class="nav-item" data-view="map"><span>◎</span> Cartographie</button>
-        <button class="nav-item" data-view="connections"><span>↻</span> Connexions comptables</button>
-        <button class="nav-item" data-view="registrations"><span>✎</span> Formations</button>
+        <button class="nav-item active" data-view="overview"><span aria-hidden="true">▦</span> Vue d'ensemble</button>
+        <button class="nav-item" data-view="companies"><span aria-hidden="true">▤</span> Entreprises</button>
+        <button class="nav-item" data-view="performance"><span aria-hidden="true">↗</span> Performance</button>
+        <button class="nav-item" data-view="map"><span aria-hidden="true">◎</span> Cartographie</button>
+        <button class="nav-item" data-view="connections"><span aria-hidden="true">↻</span> Connexions comptables</button>
+        <button class="nav-item" data-view="registrations"><span aria-hidden="true">✎</span> Formations</button>
       </nav>
 
       <div class="sidebar-bottom">
@@ -38,15 +38,15 @@
       </div>
     </aside>
 
-    <main class="main">
+    <main class="main" id="mainContent">
       <header class="topbar">
         <div>
           <p class="eyebrow" id="pageEyebrow">PILOTAGE GROUPE</p>
-          <h1 id="pageTitle">Vue d'ensemble</h1>
+          <h1 tabindex="-1" id="pageTitle">Vue d'ensemble</h1>
         </div>
         <div class="top-actions">
           <button class="btn ghost" id="exportBtn">Exporter les données</button>
-          <div class="period-pill">Octobre 2026</div>
+          <div class="period-pill">Démo · octobre 2026</div>
           <div class="avatar">GP</div>
         </div>
       </header>
@@ -97,15 +97,15 @@
 
       <section id="companiesView" class="view">
         <div class="toolbar panel">
-          <div class="search-box"><span>⌕</span><input id="companySearch" type="search" placeholder="Rechercher une entreprise, un SIREN, une ville…" /></div>
-          <select id="statusFilter"><option value="all">Tous les statuts</option><option value="A">Actives</option><option value="C">Fermées</option></select>
+          <div class="search-box"><span>⌕</span><input id="companySearch" aria-label="Rechercher une entreprise" type="search" placeholder="Rechercher une entreprise, un SIREN, une ville…" /></div>
+          <select id="statusFilter" aria-label="Statut de l’entreprise"><option value="all">Tous les statuts</option><option value="A">Actives</option><option value="C">Fermées</option></select>
           <select id="sectorFilter" aria-label="Catégorie groupe"><option value="all">Toutes les catégories</option><option>Immobilier</option><option>Automobile</option><option>Alimentaire</option><option>Industrie</option><option value="">À classer</option></select>
           <select id="accountingFilter" aria-label="Logiciel comptable"><option value="all">Tous les logiciels comptables</option></select>
-          <select id="managerFilter"><option value="all">Tous les dirigeants</option><option value="robert">Robert Parfait</option><option value="kevin">Kévin Parfait</option><option value="both">Robert + Kévin</option></select>
+          <select id="managerFilter" aria-label="Dirigeant"><option value="all">Tous les dirigeants</option><option value="robert">Robert Parfait</option><option value="kevin">Kévin Parfait</option><option value="both">Robert + Kévin</option></select>
           <span class="result-count" id="companyCount"></span>
         </div>
         <div class="panel table-panel">
-          <div class="bulk-actions"><span id="selectedCount">0 entreprise sélectionnée</span><button class="btn primary" id="bulkKpiBtn" disabled>+ Appliquer un KPI au lot</button><button class="btn ghost" id="clearSelectionBtn" disabled>Effacer la sélection</button></div>
+          <div class="bulk-actions"><span id="selectedCount" aria-live="polite">0 entreprise sélectionnée</span><button class="btn primary" id="bulkKpiBtn" disabled>+ Appliquer un KPI au lot</button><button class="btn ghost" id="clearSelectionBtn" disabled>Effacer la sélection</button></div>
           <div class="table-wrap"><table class="company-table"><thead><tr><th><input id="selectVisibleCompanies" type="checkbox" aria-label="Sélectionner les entreprises affichées" /></th><th>Entreprise</th><th>SIREN</th><th>Catégorie groupe</th><th>Logiciel comptable</th><th>Activité</th><th>Ville</th><th>Effectif</th><th>CA 2026 simulé</th><th>Évolution</th><th>Statut</th><th></th></tr></thead><tbody id="companiesTable"></tbody></table></div>
         </div>
       </section>
@@ -115,7 +115,7 @@
         <div class="kpi-grid" id="performanceKpis"></div>
         <div class="panel">
           <div class="panel-head">
-            <div><h3>Score de performance</h3><p>Exemple de suivi interne mensuel — cliquez sur une entreprise pour modifier ses données</p></div>
+            <div><h3>Score illustratif</h3><p>Score de simulation : 55 % réalisation du CA, 25 % composante de marge et 20 % composante fictive. Seuils illustratifs : 92 et 100.</p></div>
             <select id="performanceFilter"><option value="all">Toutes</option><option value="red">En alerte</option><option value="orange">À surveiller</option><option value="green">Objectif atteint</option></select>
           </div>
           <div class="table-wrap"><table><thead><tr><th>Entreprise</th><th>Secteur</th><th>CA YTD simulé</th><th>Évolution N-1</th><th>Résultat YTD</th><th>Score</th><th>Statut</th></tr></thead><tbody id="performanceTable"></tbody></table></div>
@@ -186,16 +186,17 @@
   </div>
 
   <div class="drawer-overlay" id="drawerOverlay"></div>
-  <aside class="company-drawer" id="companyDrawer">
-    <button class="drawer-close" id="drawerClose">×</button>
+  <aside class="company-drawer" id="companyDrawer" role="dialog" aria-label="Fiche entreprise" inert>
+    <button class="drawer-close" id="drawerClose" aria-label="Fermer la fiche">×</button>
     <div id="drawerContent"></div>
   </aside>
 
-  <div class="modal-overlay" id="kpiModalOverlay">
+  <div class="modal-overlay" id="kpiModalOverlay" role="dialog" aria-labelledby="kpiDialogTitle" inert>
     <div class="modal">
-      <div class="modal-head"><h3>Ajouter un KPI</h3><button id="kpiModalClose">×</button></div>
+      <div class="modal-head"><h3 id="kpiDialogTitle">Ajouter un KPI</h3><button id="kpiModalClose" aria-label="Fermer le formulaire KPI">×</button></div>
       <form id="kpiForm" class="form-grid">
         <p class="full modal-context" id="kpiModalContext"></p>
+        <div id="kpiScope" class="full kpi-scope"></div>
         <label>Nom du KPI<input id="kpiName" required placeholder="Ex. Satisfaction client" /></label>
         <label>Unité<select id="kpiUnit"><option>%</option><option>€</option><option>k€</option><option>M€</option><option>nombre</option><option>jours</option><option>heures</option><option>score</option></select></label>
         <label>Valeur<input id="kpiValue" type="number" step="any" required /></label>
@@ -207,8 +208,8 @@
   </div>
 
   <script src="data/companies-data.js"></script>
-  <script src="connections.js?v=20261029-1"></script>
-  <script src="app.js?v=20261029-2"></script>
+  <script src="connections.js?v=uxui-demo-1"></script>
+  <script src="app.js?v=uxui-demo-1"></script>
   <script src="training.js?v=20261029-1"></script>
 </body>
 </html>

@@ -133,11 +133,19 @@ function setupNav(){
   document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
   document.querySelectorAll('[data-go]').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.go)));
 }
-function showView(name){
+function showView(name, updateUrl = true){
+  if (!['overview','companies','performance','map','connections','registrations'].includes(name)) name = 'overview';
+  if (updateUrl && location.hash !== '#' + name) history.pushState(null, '', '#' + name);
+  document.querySelectorAll('.nav-item').forEach(button => {
+    if (button.dataset.view === name) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
   const titles={overview:['PILOTAGE GROUPE','Vue d\'ensemble'],companies:['RÉFÉRENTIEL','Entreprises'],performance:['ANALYSE FINANCIÈRE','Performance'],map:['STRUCTURE','Cartographie'],connections:['INTÉGRATIONS','Connexions comptables'],registrations:['FORMATIONS','Formations']};
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); const target=document.getElementById(name+'View'); if(target) target.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===name));
   document.getElementById('pageEyebrow').textContent=titles[name][0]; document.getElementById('pageTitle').textContent=titles[name][1];
+  document.title = titles[name][1] + ' — Groupe Parfait';
+  if (updateUrl) document.getElementById('pageTitle').focus();
   if(name==='companies')renderCompanies(); if(name==='performance')renderPerformance(); if(name==='map')renderMap(); if(name==='connections')renderConnections(); if(name==='registrations')renderTrainings();
 }
 
@@ -164,7 +172,7 @@ function renderOverview(){
   const monthly=months.map((month,i)=>({month,revenue:gt.active.reduce((s,c)=>s+simulatedFinance(c).monthly[i].revenue,0),prior:gt.active.reduce((s,c)=>s+simulatedFinance(c).monthly[i].prior,0)}));
   document.getElementById('groupTrend').innerHTML=`<div class="trend-summary"><div><span>CA octobre simulé</span><strong>${fmtMoney(monthly[11].revenue)}</strong></div><div><span>vs octobre N-1</span><strong class="${monthly[11].revenue>=monthly[11].prior?'positive':'negative'}">${((monthly[11].revenue/monthly[11].prior-1)*100).toFixed(1)} %</strong></div></div>${sparkline(monthly.map(x=>x.revenue))}<div class="month-axis">${months.map(m=>`<span>${m.replace(' 26','')}</span>`).join('')}</div>`;
 
-  document.getElementById('financialTop').innerHTML=companies.filter(c=>c.etat_administratif==='A').map(c=>({c,f:simulatedFinance(c)})).sort((a,b)=>b.f.ytd-a.f.ytd).slice(0,8).map(({c,f})=>`<tr data-siren="${c.siren}"><td><div class="company-name">${esc(c.nom_complet)}</div><div class="company-sub">${esc(sector(c))}</div></td><td class="money">${fmtMoney(f.ytd)}</td><td class="money ${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</td><td class="money">${fmtMoney(f.monthly.slice(2).reduce((s,m)=>s+m.result,0))}</td></tr>`).join('');
+  document.getElementById('financialTop').innerHTML=companies.filter(c=>c.etat_administratif==='A').map(c=>({c,f:simulatedFinance(c)})).sort((a,b)=>b.f.ytd-a.f.ytd).slice(0,8).map(({c,f})=>`<tr data-siren="${c.siren}"><td><button type="button" class="company-name company-open">${esc(c.nom_complet)}</button><div class="company-sub">${esc(sector(c))}</div></td><td class="money">${fmtMoney(f.ytd)}</td><td class="money ${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</td><td class="money">${fmtMoney(f.monthly.slice(2).reduce((s,m)=>s+m.result,0))}</td></tr>`).join('');
   document.querySelectorAll('#financialTop tr').forEach(r=>r.addEventListener('click',()=>openCompany(r.dataset.siren)));
 
   const sec={};companies.forEach(c=>{const category=groupCategory(c)||'À classer';sec[category]=(sec[category]||0)+1}); const sorted=Object.entries(sec).sort((a,b)=>b[1]-a[1]), max=sorted[0]?.[1]||1;
@@ -188,7 +196,7 @@ function renderCompanies(){
   accountingFilter.value=available.includes(accounting)||accounting===''?accounting:'all';
   let rows=companies.filter(c=>{ const hay=[c.nom_complet,c.siren,c.siret_siege,c.ville,c.adresse,c.activite_principale,groupCategory(c),accountingSoftware(c),...otherSoftware(c).flatMap(item=>[item.type,item.name])].join(' ').toLowerCase(); const okMgr=mgr==='all'||(mgr==='robert'&&c.dirigeant_robert)||(mgr==='kevin'&&c.dirigeant_kevin)||(mgr==='both'&&c.dirigeant_robert&&c.dirigeant_kevin); return (!q||hay.includes(q))&&(st==='all'||c.etat_administratif===st)&&(sec==='all'||groupCategory(c)===sec)&&(accountingFilter.value==='all'||accountingSoftware(c)===accountingFilter.value)&&okMgr; });
   document.getElementById('companyCount').textContent=`${rows.length} / ${companies.length} sociétés`;
-  document.getElementById('companiesTable').innerHTML=rows.length?rows.map(c=>{const f=simulatedFinance(c); return `<tr data-siren="${c.siren}"><td><input type="checkbox" data-select-siren="${c.siren}" aria-label="Sélectionner ${esc(c.nom_complet)}" ${selectedCompanies.has(c.siren)?'checked':''}></td><td><div class="company-name">${esc(c.nom_complet)}</div><div class="company-sub">${esc(managerLabel(c))}</div></td><td>${c.siren}</td><td>${esc(groupCategory(c)||'À classer')}</td><td>${esc(accountingSoftware(c)||'Non renseigné')}</td><td><div>${esc(sector(c))}</div><div class="company-sub">${esc(c.activite_principale||'')}</div></td><td>${esc(c.ville||'N/D')}</td><td>${esc(employeeLabel(c))}</td><td class="money">${fmtMoney(f.ytd)}</td><td class="${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</td><td><span class="badge ${c.etat_administratif==='A'?'active':'closed'}">${c.etat_administratif==='A'?'Active':'Fermée'}</span></td><td>›</td></tr>`}).join(''):`<tr><td colspan="12" class="empty">Aucune société ne correspond aux filtres.</td></tr>`;
+  document.getElementById('companiesTable').innerHTML=rows.length?rows.map(c=>{const f=simulatedFinance(c); return `<tr data-siren="${c.siren}"><td><input type="checkbox" data-select-siren="${c.siren}" aria-label="Sélectionner ${esc(c.nom_complet)}" ${selectedCompanies.has(c.siren)?'checked':''}></td><td><button type="button" class="company-name company-open">${esc(c.nom_complet)}</button><div class="company-sub">${esc(managerLabel(c))}</div></td><td>${c.siren}</td><td>${esc(groupCategory(c)||'À classer')}</td><td>${esc(accountingSoftware(c)||'Non renseigné')}</td><td><div>${esc(sector(c))}</div><div class="company-sub">${esc(c.activite_principale||'')}</div></td><td>${esc(c.ville||'N/D')}</td><td>${esc(employeeLabel(c))}</td><td class="money">${fmtMoney(f.ytd)}</td><td class="${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</td><td><span class="badge ${c.etat_administratif==='A'?'active':'closed'}">${c.etat_administratif==='A'?'Active':'Fermée'}</span></td><td>›</td></tr>`}).join(''):`<tr><td colspan="12" class="empty">Aucune société ne correspond aux filtres.</td></tr>`;
   document.querySelectorAll('#companiesTable tr[data-siren]').forEach(row=>row.addEventListener('click',e=>{if(e.target.closest('input'))return;openCompany(row.dataset.siren)}));
   document.querySelectorAll('#companiesTable input[data-select-siren]').forEach(input=>input.addEventListener('change',()=>{if(input.checked)selectedCompanies.add(input.dataset.selectSiren);else selectedCompanies.delete(input.dataset.selectSiren);updateCompanySelection(rows)}));
   updateCompanySelection(rows);
@@ -196,7 +204,7 @@ function renderCompanies(){
 
 function updateCompanySelection(rows){
   const count=selectedCompanies.size;
-  document.getElementById('selectedCount').textContent=`${count} entreprise${count>1?'s':''} sélectionnée${count>1?'s':''}`;
+  document.getElementById('selectedCount').textContent=`${count} entreprise${count>1?'s':''} sélectionnée${count>1?'s':''} · ${[...selectedCompanies].filter(siren => !rows.some(company => company.siren === siren)).length} hors filtres`;
   document.getElementById('bulkKpiBtn').disabled=count===0;
   document.getElementById('clearSelectionBtn').disabled=count===0;
   const selectAll=document.getElementById('selectVisibleCompanies');
@@ -210,7 +218,7 @@ function renderPerformance(){
   const statuses=active.map(c=>statusFromScore(demoMetrics(c).score)), avg=Math.round(active.reduce((s,c)=>s+demoMetrics(c).score,0)/(active.length||1));
   const gt=groupTotals(); const cards=[['CA YTD simulé',fmtMoney(gt.ytd),`${gt.growth>=0?'+':''}${gt.growth.toFixed(1)} % vs N-1`],['Résultat YTD',fmtMoney(gt.result),'Simulation consolidée'],['Score moyen',avg+' / 100','Performance interne'],['En alerte',statuses.filter(s=>s==='red').length,'Score < 92']];
   document.getElementById('performanceKpis').innerHTML=cards.map(x=>`<div class="kpi-card"><div class="kpi-label">${x[0]}</div><div class="kpi-value">${x[1]}</div><div class="kpi-note">${x[2]}</div></div>`).join('');
-  document.getElementById('performanceTable').innerHTML=rows.map(({c,m,f})=>{const st=statusFromScore(m.score);return `<tr data-siren="${c.siren}"><td><div class="company-name">${esc(c.nom_complet)}</div><div class="company-sub">${c.siren}</div></td><td>${esc(sector(c))}</td><td class="money">${fmtMoney(f.ytd)}</td><td class="${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</td><td class="money">${fmtMoney(f.monthly.slice(2).reduce((s,x)=>s+x.result,0))}</td><td><div class="score"><b>${m.score}</b><div class="score-bar"><div class="score-fill ${st}" style="width:${Math.min(100,m.score)}%"></div></div></div></td><td><span class="badge ${st}">${st==='green'?'Objectif atteint':st==='orange'?'À surveiller':'En alerte'}</span></td></tr>`}).join('');
+  document.getElementById('performanceTable').innerHTML=rows.map(({c,m,f})=>{const st=statusFromScore(m.score);return `<tr data-siren="${c.siren}"><td><button type="button" class="company-name company-open">${esc(c.nom_complet)}</button><div class="company-sub">${c.siren}</div></td><td>${esc(sector(c))}</td><td class="money">${fmtMoney(f.ytd)}</td><td class="${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</td><td class="money">${fmtMoney(f.monthly.slice(2).reduce((s,x)=>s+x.result,0))}</td><td><div class="score"><b>${m.score}</b><div class="score-bar"><div class="score-fill ${st}" style="width:${Math.min(100,m.score)}%"></div></div></div></td><td><span class="badge ${st}">${st==='green'?'Objectif atteint':st==='orange'?'À surveiller':'En alerte'}</span></td></tr>`}).join('');
   document.querySelectorAll('#performanceTable tr[data-siren]').forEach(r=>r.addEventListener('click',()=>openCompany(r.dataset.siren)));
 }
 
@@ -362,7 +370,7 @@ function openCompany(siren){
   const publicCA=n(c.ca_public)>0?fmtMoney(c.ca_public):'N/D'; const resultPublic=n(c.resultat_net_public)!==null?fmtMoney(c.resultat_net_public):'N/D';
   document.getElementById('drawerContent').innerHTML=`
     <div class="drawer-header"><p class="eyebrow">Activité publique : ${esc(sector(c))} · Catégorie groupe : <span id="drawerGroupCategory">${esc(category||'À classer')}</span></p><h2>${esc(c.nom_complet)}</h2><p class="muted">SIREN ${c.siren} · ${esc(managerLabel(c))}</p></div>
-    <div class="drawer-tabs"><button class="drawer-tab active" type="button" data-drawer-tab="details">Fiche entreprise</button><button class="drawer-tab" type="button" data-drawer-tab="notes">Note privée</button></div>
+    <div class="drawer-tabs"><button class="drawer-tab active" type="button" data-drawer-tab="details">Fiche entreprise</button><button class="drawer-tab" type="button" data-drawer-tab="notes">Note locale (non confidentielle)</button></div>
     <div class="drawer-body" id="companyDetailsPanel">
       <div class="notice" id="mapSampleNotice" hidden><b>Échantillon fictif.</b> La cartographie illustre des logiciels et des KPI pour cette entreprise sans les enregistrer dans sa fiche. Les champs ci-dessous sont les données réellement saisies.</div>
       <div class="section-title">Données légales</div>
@@ -408,7 +416,7 @@ function openCompany(siren){
       <div class="section-title">KPI internes</div><div class="kpi-list" id="companyKpiList"></div><button class="btn ghost" id="addKpiBtn">+ Ajouter un KPI</button>
     </div>
     <div class="drawer-body" id="companyNotesPanel" hidden>
-      <div class="notice"><b>Note privée de démo.</b> Conservée uniquement sur cet appareil. Sans connexion utilisateur, elle n’est pas protégée contre les autres personnes utilisant ce navigateur.</div>
+      <div class="notice"><b>Note locale (non confidentielle) de démo.</b> Conservée uniquement sur cet appareil. Sans connexion utilisateur, elle n’est pas protégée contre les autres personnes utilisant ce navigateur.</div>
       <form id="privateNoteForm"><label for="privateNote">Votre note sur ${esc(c.nom_complet)}</label><textarea id="privateNote" rows="10" placeholder="Écrivez votre note interne…">${esc(int.privateNote??'')}</textarea><div class="form-actions"><button class="btn primary" type="submit">Enregistrer la note</button></div><p id="privateNoteStatus" role="status"></p></form>
     </div>`;
   renderCompanyKpis(c.siren);
@@ -448,6 +456,7 @@ function openCompany(siren){
   document.querySelectorAll('[data-drawer-tab]').forEach(button=>button.addEventListener('click',()=>{const notes=button.dataset.drawerTab==='notes';document.getElementById('companyDetailsPanel').hidden=notes;document.getElementById('companyNotesPanel').hidden=!notes;document.querySelectorAll('[data-drawer-tab]').forEach(tab=>tab.classList.toggle('active',tab===button))}));
   document.getElementById('privateNoteForm').addEventListener('submit',e=>{e.preventDefault();internal[c.siren]={...getInternal(c.siren),privateNote:document.getElementById('privateNote').value};saveInternal();document.getElementById('privateNoteStatus').textContent='Note enregistrée sur cet appareil.'});
   document.getElementById('drawerOverlay').classList.add('open'); document.getElementById('companyDrawer').classList.add('open');
+  enterDialog('companyDrawer', 'drawerClose');
 }
 function renderMapSampleNotice(c){
   const notice=document.getElementById('mapSampleNotice');
@@ -458,7 +467,8 @@ function renderMapSearchResults(){
   if(query.length<2){panel.hidden=true;input.setAttribute('aria-expanded','false');return}
   const names=[...new Set(companies.flatMap(c=>[mapAccounting(c),...mapOtherSoftware(c).map(item=>item.name)]).filter(Boolean))];
   const options=[...groupCategories.map(label=>({type:'Pôle',label,mode:'category',group:label})),...mapFamilies().map(label=>({type:'Famille',label,mode:'software',group:label})),...names.map(label=>({type:'Logiciel',label,mode:'software',group:mapFamilies().find(family=>companies.some(c=>mapTools(c,family).includes(label)))})),...companies.map(c=>({type:'Entreprise',label:c.nom_complet,siren:c.siren,category:mapCategory(c)}))].filter(option=>option.label.toLocaleLowerCase('fr').includes(query)).slice(0,9);
-  panel.innerHTML=options.length?options.map((option,index)=>`<button type="button" role="option" data-map-result="${index}">${esc(option.label)}<small>${esc(option.type)}${option.siren?' · '+esc(option.siren):''}</small></button>`).join(''):'<div class="map-empty">Aucun résultat</div>';
+  input.removeAttribute('aria-activedescendant');
+  panel.innerHTML=options.length?options.map((option,index)=>`<button type="button" role="option" id="map-option-${index}" tabindex="-1" aria-selected="false" data-map-result="${index}">${esc(option.label)}<small>${esc(option.type)}${option.siren?' · '+esc(option.siren):''}</small></button>`).join(''):'<div class="map-empty">Aucun résultat</div>';
   panel.hidden=false;input.setAttribute('aria-expanded','true');
   panel.querySelectorAll('[data-map-result]').forEach(button=>button.addEventListener('click',()=>{const option=options[Number(button.dataset.mapResult)];input.value='';mapMode=option.mode||'category';mapGroup=option.group||option.category;mapSoftware=option.type==='Logiciel'?option.label:null;mapCompany=option.siren||null;if(option.siren&&option.type==='Entreprise')mapCompany=option.siren;panel.hidden=true;input.setAttribute('aria-expanded','false');renderMap()}));
 }
@@ -476,22 +486,131 @@ function renderCompanyKpis(siren){
   const list=(getInternal(siren).kpis||[]); document.getElementById('companyKpiList').innerHTML=list.length?list.map((k,i)=>`<div class="kpi-row"><span><b>${esc(k.name)}</b><small>${esc(k.comment||'')}</small></span><b>${esc(k.value)} ${esc(k.unit)}</b><span>Obj. ${esc(k.target)} ${esc(k.unit)}</span><span class="badge ${Number(k.value)>=Number(k.target)?'green':'orange'}">${Number(k.value)>=Number(k.target)?'Atteint':'À suivre'}</span><button class="icon-btn" data-kpi-remove="${i}">×</button></div>`).join(''):`<div class="empty-inline">Aucun KPI personnalisé. Ajoutez-en pour illustrer le suivi métier.</div>`;
   document.querySelectorAll('[data-kpi-remove]').forEach(b=>b.addEventListener('click',()=>{const old=getInternal(siren),k=[...(old.kpis||[])];k.splice(Number(b.dataset.kpiRemove),1);internal[siren]={...old,kpis:k};saveInternal();renderCompanyKpis(siren);renderMap();}));
 }
-function openKpiModal(targets){kpiTargets=Array.isArray(targets)?targets:[targets];document.getElementById('kpiModalContext').textContent=kpiTargets.length===1?'Ce KPI sera ajouté à une entreprise.':`Ce KPI sera ajouté à ${kpiTargets.length} entreprises sélectionnées.`;document.getElementById('kpiModalOverlay').classList.add('open')}
-function closeKpiModal(){document.getElementById('kpiModalOverlay').classList.remove('open');document.getElementById('kpiForm').reset()}
+function openKpiModal(targets){kpiTargets=Array.isArray(targets)?targets:[targets];document.getElementById('kpiModalContext').textContent=kpiTargets.length===1?'Ce KPI sera ajouté à une entreprise.':`Ce KPI sera ajouté à ${kpiTargets.length} entreprises sélectionnées.`;document.getElementById('kpiModalOverlay').classList.add('open');
+  renderKpiScope();
+  enterDialog('kpiModalOverlay', 'kpiName');
+}
+function closeKpiModal(saved = false){if (saved !== true && !confirmDiscard('kpiModalOverlay')) return;document.getElementById('kpiModalOverlay').classList.remove('open');document.getElementById('kpiForm').reset(); leaveDialog('kpiModalOverlay');}
 
 function setupGlobal(){
   document.getElementById('drawerClose').addEventListener('click',closeDrawer); document.getElementById('drawerOverlay').addEventListener('click',closeDrawer);
   document.getElementById('kpiModalClose').addEventListener('click',closeKpiModal); document.getElementById('kpiCancel').addEventListener('click',closeKpiModal);
-  document.getElementById('kpiForm').addEventListener('submit',e=>{e.preventDefault();const kpi={name:document.getElementById('kpiName').value.trim(),unit:document.getElementById('kpiUnit').value,value:document.getElementById('kpiValue').value,target:document.getElementById('kpiTarget').value,comment:document.getElementById('kpiComment').value.trim()};kpiTargets.forEach(siren=>{const old=getInternal(siren);internal[siren]={...old,kpis:[...(old.kpis||[]),{...kpi}]}});saveInternal();const currentSiren=currentCompany?.siren;closeKpiModal();if(currentSiren&&kpiTargets.includes(currentSiren))renderCompanyKpis(currentSiren);selectedCompanies.clear();renderCompanies();renderMap();});
+  document.getElementById('kpiForm').addEventListener('submit',e=>{e.preventDefault();if (!kpiTargets.length) return;const kpi={name:document.getElementById('kpiName').value.trim(),unit:document.getElementById('kpiUnit').value,value:document.getElementById('kpiValue').value,target:document.getElementById('kpiTarget').value,comment:document.getElementById('kpiComment').value.trim()};kpiTargets.forEach(siren=>{const old=getInternal(siren);internal[siren]={...old,kpis:[...(old.kpis||[]),{...kpi}]}});saveInternal();const currentSiren=currentCompany?.siren;closeKpiModal(true);if(currentSiren&&kpiTargets.includes(currentSiren))renderCompanyKpis(currentSiren);selectedCompanies.clear();renderCompanies();renderMap();});
   document.getElementById('performanceFilter').addEventListener('change',renderPerformance);
   document.getElementById('mapSearch').addEventListener('input',()=>{mapGroup=null;mapSoftware=null;mapCompany=null;renderMap();renderMapSearchResults()});
-  document.getElementById('mapSearch').addEventListener('keydown',event=>{if(event.key==='Escape'){document.getElementById('mapSearchResults').hidden=true;event.currentTarget.setAttribute('aria-expanded','false')}if(event.key==='Enter'){const first=document.querySelector('[data-map-result]');if(first){event.preventDefault();first.click()}}});
+  document.getElementById('mapSearch').addEventListener('keydown', event => {
+    const input = event.currentTarget;
+    const panel = document.getElementById('mapSearchResults');
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      panel.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+      return;
+    }
+    if (panel.hidden) return;
+    const options = [...panel.querySelectorAll('[role="option"]')];
+    if (!options.length) return;
+    const active = options.findIndex(option => option.id === input.getAttribute('aria-activedescendant'));
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      options[Math.max(0, active)].click();
+      input.removeAttribute('aria-activedescendant');
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const next = active < 0 ? (event.key === 'ArrowDown' ? 0 : options.length - 1)
+        : (active + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+      options.forEach((option, index) => option.setAttribute('aria-selected', String(index === next)));
+      input.setAttribute('aria-activedescendant', options[next].id);
+      options[next].scrollIntoView({block: 'nearest'});
+    }
+  });
   document.addEventListener('click',event=>{if(!event.target.closest('.map-search-wrap')){document.getElementById('mapSearchResults').hidden=true;document.getElementById('mapSearch').setAttribute('aria-expanded','false')}});
   document.querySelectorAll('[data-map-mode]').forEach(button=>button.addEventListener('click',()=>{mapMode=button.dataset.mapMode;mapGroup=null;mapSoftware=null;mapCompany=null;document.getElementById('mapSearch').value='';renderMap()}));
   document.getElementById('mapSampleToggle').addEventListener('change',event=>{showMapSamples=event.target.checked;mapGroup=null;mapSoftware=null;mapCompany=null;renderMap();renderConnections();renderOverview()});
   window.addEventListener('resize',mapDrawLinks);
   document.getElementById('exportBtn').addEventListener('click',()=>{const payload=companies.map(c=>({...c,simulation:simulatedFinance(c),internal:getInternal(c.siren)}));const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='groupe-parfait-demo-enrichie.json';a.click();URL.revokeObjectURL(a.href);});
 }
-function closeDrawer(){document.getElementById('drawerOverlay').classList.remove('open');document.getElementById('companyDrawer').classList.remove('open')}
+function closeDrawer(){document.getElementById('drawerOverlay').classList.remove('open');document.getElementById('companyDrawer').classList.remove('open'); leaveDialog('companyDrawer');}
 
 setupNav(); setupCompanyFilters(); setupGlobal(); setupConnections(); renderOverview(); renderPerformance(); renderMap(); renderConnections();
+
+function renderKpiScope() {
+  const scope = document.getElementById('kpiScope');
+  scope.replaceChildren();
+  document.getElementById('kpiModalContext').textContent = `${kpiTargets.length} entreprise(s) concernée(s)`;
+  document.querySelector('#kpiForm button[type="submit"]').disabled = !kpiTargets.length;
+  kpiTargets.forEach(siren => {
+    const company = companies.find(item => item.siren === siren);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn ghost';
+    button.textContent = 'Retirer ' + (company?.nom_complet || siren);
+    button.addEventListener('click', () => {
+      kpiTargets = kpiTargets.filter(target => target !== siren);
+      renderKpiScope();
+      (scope.querySelector('button') || document.getElementById('kpiCancel')).focus();
+    });
+    scope.append(button);
+  });
+}
+
+function enterDialog(id, focusId) {
+  const dialog = document.getElementById(id);
+  dialog.opener = document.activeElement;
+  dialog.inert = false;
+  dialog.setAttribute('aria-modal', 'true');
+  document.querySelector('.app-shell').inert = true;
+  if (id === 'kpiModalOverlay') document.getElementById('companyDrawer').inert = true;
+  document.getElementById(focusId).focus();
+}
+
+function leaveDialog(id) {
+  const dialog = document.getElementById(id);
+  dialog.inert = true;
+  dialog.removeAttribute('aria-modal');
+  const drawer = document.getElementById('companyDrawer');
+  const drawerOpen = drawer.classList.contains('open');
+  drawer.inert = !drawerOpen;
+  document.querySelector('.app-shell').inert = drawerOpen;
+  const opener = dialog.opener;
+  (opener?.isConnected && !opener.disabled ? opener : document.getElementById(drawerOpen ? 'drawerClose' : 'pageTitle')).focus();
+}
+
+document.addEventListener('keydown', event => {
+  const dialog = document.querySelector('#kpiModalOverlay.open') || document.querySelector('#companyDrawer.open');
+  if (!dialog) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    if (dialog.id === 'kpiModalOverlay') closeKpiModal();
+    else closeDrawer();
+  }
+  if (event.key !== 'Tab') return;
+  const controls = [...dialog.querySelectorAll('button, input, select, textarea, a[href]')]
+    .filter(control => !control.disabled && control.getClientRects().length);
+  const first = controls[0];
+  const last = controls.at(-1);
+  if (event.shiftKey ? document.activeElement === first : document.activeElement === last) {
+    event.preventDefault();
+    (event.shiftKey ? last : first)?.focus();
+  }
+});
+
+function restoreViewFromUrl() {
+  showView(location.hash.slice(1) || 'overview', false);
+}
+window.addEventListener('popstate', restoreViewFromUrl);
+document.addEventListener('DOMContentLoaded', restoreViewFromUrl);
+
+function confirmDiscard(id) {
+  const dialog = document.getElementById(id);
+  const changed = [...dialog.querySelectorAll('input, select, textarea')].some(field => {
+    if (field.type === 'checkbox' || field.type === 'radio') return field.checked !== field.defaultChecked;
+    if (field.tagName === 'SELECT') {
+      const initial = [...field.options].find(option => option.defaultSelected) || field.options[0];
+      return initial && initial.value !== field.value;
+    }
+    return field.value !== field.defaultValue;
+  });
+  return !changed || window.confirm('Quitter sans enregistrer les modifications ?');
+}

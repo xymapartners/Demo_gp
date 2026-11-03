@@ -19,7 +19,11 @@ if (!evaluationId?.startsWith('demo-') || evaluationId.length > 100 || !evaluati
     fieldset.className = 'evaluation-question';
     const legend = document.createElement('legend');
     legend.textContent = `${index + 1}. ${question.label}`;
-    fieldset.append(legend);
+    const scale = document.createElement('p');
+    scale.id = 'evaluation-scale-' + index;
+    scale.textContent = '1 — Pas du tout · 5 — Tout à fait';
+    fieldset.setAttribute('aria-describedby', scale.id);
+    fieldset.append(legend, scale);
     const choices = document.createElement('div');
     choices.className = 'evaluation-choices';
     for (let score = 1; score <= 5; score += 1) {
