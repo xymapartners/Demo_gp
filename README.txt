@@ -1,6 +1,6 @@
 GROUPE PARFAIT — DÉMO DASHBOARD
 
-Publier le dossier sur un site statique ou le servir localement avec `python3 -m http.server 8000`.
+Publier le dossier sur un site statique ou le servir localement avec `python3 -m http.server 8000`. La page d’accueil est `index.html` ; le tableau de bord est `dashboard.html`. Publier les deux avec `access.js` et `access.css`.
 
 Cette démo contient :
 - les sociétés issues du référentiel fourni,
@@ -35,4 +35,7 @@ Publier tout le dossier, notamment index.html, training.js, training.css, connec
 
 Une formation test créée dans l'onglet Formations conserve un formulaire public de Nom, Prénom et Mail pro. Ses réponses sont transmises par FormSubmit à l'adresse choisie, proposée par défaut comme xymapartners.contact@gmail.com. Lors du premier envoi, le destinataire doit confirmer l'e-mail d'activation. Les anciens liens sans destinataire utilisent l'adresse proposée. Les données passent par un service tiers ; ce mode de collecte doit être validé par le client. Les comptes d'inscrits centralisés, les supports, les présences et les évaluations des formations créées sont volontairement verrouillés dans la démo. Ils nécessitent un serveur et une base de données sécurisée ; le module actuel ne prétend pas synchroniser les réponses entre appareils.
 
-Les notes dites privées n'ont pas d'authentification : toute personne ayant accès au même navigateur peut les consulter. Elles ne sont pas synchronisées entre appareils.
+Les notes dites privées restent communes aux comptes de démonstration du même navigateur. Elles ne sont pas synchronisées entre appareils ni protégées par une authentification serveur.
+
+ACCÈS À LA DÉMO :
+Tout visiteur peut créer un compte avec une adresse e-mail et un mot de passe d’au moins 8 caractères, puis se connecter et se déconnecter. Le mot de passe est dérivé avec PBKDF2 et un sel propre au compte ; il n’est pas enregistré en clair. Les comptes sont stockés dans le navigateur et la session dans son onglet. Le site doit être ouvert en HTTPS ou sur localhost pour créer un compte. Ce contrôle d’interface ne constitue pas une authentification serveur : les comptes ne sont pas utilisables sur d’autres appareils, les données de la démo restent communes aux comptes du même navigateur, et les fichiers statiques ne sont pas réellement privés. Une authentification et un stockage serveur seront nécessaires avant de traiter de vraies données confidentielles.
