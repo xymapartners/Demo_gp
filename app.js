@@ -41,6 +41,65 @@ const mapSamples = {
 
 function loadInternal(){ try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||{}}catch{return{}} }
 function saveInternal(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(internal)); }
+
+function setPersistenceNotice(localMode){
+  const notice=document.getElementById('demoPersistenceNotice');
+  if(notice)notice.hidden=!localMode;
+}
+
+function remoteStateToInternal(state){
+  if(!state)return {};
+  return {
+    effectif_interne:state.effectif_interne,
+    ca_interne:state.ca_interne,
+    objectif_ca:state.objectif_ca,
+    groupCategory:state.categorie_groupe??'',
+    accountingSoftware:state.accounting_software??'',
+    commentaire:state.commentaire??'',
+    otherSoftware:Array.isArray(state.other_software)?state.other_software:[],
+    kpis:Array.isArray(state.kpis)?state.kpis:[],
+    connectionStatus:state.connection_status??'not_configured',
+    connectionSyncedAt:state.connection_synced_at??null
+  };
+}
+
+async function loadRemoteDemoState(){
+  if(!window.DemoApi)return false;
+  try{
+    const rows=await window.DemoApi.companies();
+    if(!Array.isArray(rows))throw new Error('Réponse API invalide');
+    rows.forEach(company=>{
+      const local=getInternal(company.siren);
+      internal[company.siren]={...local,...remoteStateToInternal(company.demo_state),privateNote:local.privateNote};
+    });
+    saveInternal();
+    setPersistenceNotice(false);
+    return true;
+  }catch(error){
+    console.warn('API de démo indisponible, mode local conservé.',error);
+    setPersistenceNotice(true);
+    return false;
+  }
+}
+
+async function persistCompanyDemo(siren,patch){
+  if(!window.DemoApi){
+    setPersistenceNotice(true);
+    return {remote:false};
+  }
+  try{
+    const state=await window.DemoApi.updateCompany(siren,patch);
+    const local=getInternal(siren);
+    internal[siren]={...local,...remoteStateToInternal(state),privateNote:local.privateNote};
+    saveInternal();
+    setPersistenceNotice(false);
+    return {remote:true,state};
+  }catch(error){
+    console.warn('Échec de la synchronisation Supabase, modification conservée localement.',error);
+    setPersistenceNotice(true);
+    return {remote:false,error};
+  }
+}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
 function n(v){const x=Number(v);return Number.isFinite(x)?x:null}
 function fmtMoney(v, compact=true){const x=n(v);if(x===null)return 'N/D';const abs=Math.abs(x);const sign=x<0?'-':'';if(compact){if(abs>=1e9)return sign+(abs/1e9).toLocaleString('fr-FR',{maximumFractionDigits:1})+' Md€';if(abs>=1e6)return sign+(abs/1e6).toLocaleString('fr-FR',{maximumFractionDigits:1})+' M€';if(abs>=1e3)return sign+(abs/1e3).toLocaleString('fr-FR',{maximumFractionDigits:0})+' k€'}return x.toLocaleString('fr-FR')+' €'}
@@ -417,14 +476,24 @@ function openCompany(siren){
   setupCustomSelect('otherTypeSelect','otherTypeCustom');
   setupCustomSelect('otherNameSelect','otherNameCustom');
   renderMapSampleNotice(c);
-  document.getElementById('internalForm').addEventListener('submit',event=>{
+  document.getElementById('internalForm').addEventListener('submit',async event=>{
     event.preventDefault();
     const saved=getInternal(c.siren),previousAccounting=accountingSoftware(c),selectedAccounting=document.getElementById('accountingSelect').value;
     const nextAccounting=selectedAccounting==='other'?document.getElementById('accountingCustom').value.trim():selectedAccounting;
-    internal[c.siren]={...saved,effectif_interne:document.getElementById('internalEmployees').value,ca_interne:document.getElementById('internalRevenue').value,objectif_ca:document.getElementById('internalTarget').value,groupCategory:document.getElementById('internalCategory').value,accountingSoftware:nextAccounting,commentaire:document.getElementById('internalComment').value};
+    const patch={
+      effectif_interne:document.getElementById('internalEmployees').value,
+      ca_interne:document.getElementById('internalRevenue').value,
+      objectif_ca:document.getElementById('internalTarget').value,
+      categorie_groupe:document.getElementById('internalCategory').value||null,
+      accounting_software:nextAccounting||null,
+      commentaire:document.getElementById('internalComment').value
+    };
+    internal[c.siren]={...saved,effectif_interne:patch.effectif_interne,ca_interne:patch.ca_interne,objectif_ca:patch.objectif_ca,groupCategory:patch.categorie_groupe||'',accountingSoftware:nextAccounting,commentaire:patch.commentaire};
     if(previousAccounting!==nextAccounting || !Object.hasOwn(saved,'accountingSoftware'))clearConnectionRecord(c.siren);
     saveInternal();
-    document.getElementById('internalSaveStatus').textContent='Enregistré sur cet appareil.';
+    document.getElementById('internalSaveStatus').textContent='Synchronisation…';
+    const result=await persistCompanyDemo(c.siren,patch);
+    document.getElementById('internalSaveStatus').textContent=result.remote?'Enregistré dans la démo partagée.':'Enregistré localement — synchronisation indisponible.';
     document.getElementById('drawerGroupCategory').textContent=groupCategory(c)||'À classer';
     renderMapSampleNotice(c);
     renderCompanies();renderOverview();renderMap();renderConnections();
@@ -440,6 +509,7 @@ function openCompany(siren){
     const saved=getInternal(c.siren),software=[...otherSoftware(c)];
     if(!software.some(item=>item.type===savedType&&item.name===name))software.push({type:savedType,name});
     internal[c.siren]={...saved,otherSoftware:software};saveInternal();
+    persistCompanyDemo(c.siren,{other_software:software});
     renderMapSampleNotice(c);
     renderOtherSoftwareList(c.siren);renderCompanies();renderMap();
     event.target.reset();document.getElementById('otherTypeSelect').innerHTML='<option value="">Choisir un type</option>'+softwareOptions(availableSoftwareTypes(),'')+'<option value="other">Autre type…</option>';document.getElementById('otherTypeSelect').dispatchEvent(new Event('change'));document.getElementById('otherNameSelect').dispatchEvent(new Event('change'));
@@ -470,11 +540,11 @@ function setupCustomSelect(selectId,inputId){
 function renderOtherSoftwareList(siren){
   const list=otherSoftware({siren});
   document.getElementById('otherSoftwareList').innerHTML=list.length?list.map((item,index)=>`<div class="software-row"><span><b>${esc(item.name)}</b><small>${esc(item.type)}</small></span><button class="icon-btn" type="button" data-software-remove="${index}" aria-label="Retirer ${esc(item.name)}">×</button></div>`).join(''):'<div class="empty-inline">Aucun autre logiciel renseigné.</div>';
-  document.querySelectorAll('[data-software-remove]').forEach(button=>button.addEventListener('click',()=>{const saved=getInternal(siren),updated=[...otherSoftware({siren})];updated.splice(Number(button.dataset.softwareRemove),1);internal[siren]={...saved,otherSoftware:updated};saveInternal();renderMapSampleNotice({siren});renderOtherSoftwareList(siren);renderCompanies();renderMap()}));
+  document.querySelectorAll('[data-software-remove]').forEach(button=>button.addEventListener('click',()=>{const saved=getInternal(siren),updated=[...otherSoftware({siren})];updated.splice(Number(button.dataset.softwareRemove),1);internal[siren]={...saved,otherSoftware:updated};saveInternal();persistCompanyDemo(siren,{other_software:updated});renderMapSampleNotice({siren});renderOtherSoftwareList(siren);renderCompanies();renderMap()}));
 }
 function renderCompanyKpis(siren){
   const list=(getInternal(siren).kpis||[]); document.getElementById('companyKpiList').innerHTML=list.length?list.map((k,i)=>`<div class="kpi-row"><span><b>${esc(k.name)}</b><small>${esc(k.comment||'')}</small></span><b>${esc(k.value)} ${esc(k.unit)}</b><span>Obj. ${esc(k.target)} ${esc(k.unit)}</span><span class="badge ${Number(k.value)>=Number(k.target)?'green':'orange'}">${Number(k.value)>=Number(k.target)?'Atteint':'À suivre'}</span><button class="icon-btn" data-kpi-remove="${i}">×</button></div>`).join(''):`<div class="empty-inline">Aucun KPI personnalisé. Ajoutez-en pour illustrer le suivi métier.</div>`;
-  document.querySelectorAll('[data-kpi-remove]').forEach(b=>b.addEventListener('click',()=>{const old=getInternal(siren),k=[...(old.kpis||[])];k.splice(Number(b.dataset.kpiRemove),1);internal[siren]={...old,kpis:k};saveInternal();renderCompanyKpis(siren);renderMap();}));
+  document.querySelectorAll('[data-kpi-remove]').forEach(b=>b.addEventListener('click',()=>{const old=getInternal(siren),k=[...(old.kpis||[])];k.splice(Number(b.dataset.kpiRemove),1);internal[siren]={...old,kpis:k};saveInternal();persistCompanyDemo(siren,{kpis:k});renderCompanyKpis(siren);renderMap();}));
 }
 function openKpiModal(targets){kpiTargets=Array.isArray(targets)?targets:[targets];document.getElementById('kpiModalContext').textContent=kpiTargets.length===1?'Ce KPI sera ajouté à une entreprise.':`Ce KPI sera ajouté à ${kpiTargets.length} entreprises sélectionnées.`;document.getElementById('kpiModalOverlay').classList.add('open')}
 function closeKpiModal(){document.getElementById('kpiModalOverlay').classList.remove('open');document.getElementById('kpiForm').reset()}
@@ -482,7 +552,7 @@ function closeKpiModal(){document.getElementById('kpiModalOverlay').classList.re
 function setupGlobal(){
   document.getElementById('drawerClose').addEventListener('click',closeDrawer); document.getElementById('drawerOverlay').addEventListener('click',closeDrawer);
   document.getElementById('kpiModalClose').addEventListener('click',closeKpiModal); document.getElementById('kpiCancel').addEventListener('click',closeKpiModal);
-  document.getElementById('kpiForm').addEventListener('submit',e=>{e.preventDefault();const kpi={name:document.getElementById('kpiName').value.trim(),unit:document.getElementById('kpiUnit').value,value:document.getElementById('kpiValue').value,target:document.getElementById('kpiTarget').value,comment:document.getElementById('kpiComment').value.trim()};kpiTargets.forEach(siren=>{const old=getInternal(siren);internal[siren]={...old,kpis:[...(old.kpis||[]),{...kpi}]}});saveInternal();const currentSiren=currentCompany?.siren;closeKpiModal();if(currentSiren&&kpiTargets.includes(currentSiren))renderCompanyKpis(currentSiren);selectedCompanies.clear();renderCompanies();renderMap();});
+  document.getElementById('kpiForm').addEventListener('submit',e=>{e.preventDefault();const kpi={name:document.getElementById('kpiName').value.trim(),unit:document.getElementById('kpiUnit').value,value:Number(document.getElementById('kpiValue').value),target:Number(document.getElementById('kpiTarget').value),comment:document.getElementById('kpiComment').value.trim()};kpiTargets.forEach(siren=>{const old=getInternal(siren),kpis=[...(old.kpis||[]),{...kpi}];internal[siren]={...old,kpis};persistCompanyDemo(siren,{kpis})});saveInternal();const currentSiren=currentCompany?.siren;closeKpiModal();if(currentSiren&&kpiTargets.includes(currentSiren))renderCompanyKpis(currentSiren);selectedCompanies.clear();renderCompanies();renderMap();});
   document.getElementById('performanceFilter').addEventListener('change',renderPerformance);
   document.getElementById('mapSearch').addEventListener('input',()=>{mapGroup=null;mapSoftware=null;mapCompany=null;renderMap();renderMapSearchResults()});
   document.getElementById('mapSearch').addEventListener('keydown',event=>{if(event.key==='Escape'){document.getElementById('mapSearchResults').hidden=true;event.currentTarget.setAttribute('aria-expanded','false')}if(event.key==='Enter'){const first=document.querySelector('[data-map-result]');if(first){event.preventDefault();first.click()}}});
@@ -494,4 +564,15 @@ function setupGlobal(){
 }
 function closeDrawer(){document.getElementById('drawerOverlay').classList.remove('open');document.getElementById('companyDrawer').classList.remove('open')}
 
-setupNav(); setupCompanyFilters(); setupGlobal(); setupConnections(); renderOverview(); renderPerformance(); renderMap(); renderConnections();
+async function initDemoDashboard(){
+  await loadRemoteDemoState();
+  setupNav();
+  setupCompanyFilters();
+  setupGlobal();
+  setupConnections();
+  renderOverview();
+  renderPerformance();
+  renderMap();
+  renderConnections();
+}
+initDemoDashboard();
