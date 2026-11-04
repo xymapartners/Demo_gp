@@ -1,0 +1,13 @@
+# Exemple uniquement — ne jamais committer de vraies valeurs.
+# En production, configurer ces valeurs dans Cloudflare Workers > Settings > Variables and Secrets.
+
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_REPLACE_ME
+
+# Listes séparées par des virgules.
+XYMA_ADMIN_EMAILS=xyma1@example.com,xyma2@example.com,xyma3@example.com
+PARFET_ADMIN_EMAILS=admin-parfet@example.com
+
+# Facultatif si l'API est servie sur le même origin que le front.
+# Si l'API utilise un autre sous-domaine, mettre ici l'origin exact du front.
+ALLOWED_ORIGIN=https://demo.example.com
