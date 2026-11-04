@@ -408,7 +408,7 @@ function openCompany(siren){
       <div class="section-title">KPI internes</div><div class="kpi-list" id="companyKpiList"></div><button class="btn ghost" id="addKpiBtn">+ Ajouter un KPI</button>
     </div>
     <div class="drawer-body" id="companyNotesPanel" hidden>
-      <div class="notice"><b>Note privée de démo.</b> Conservée uniquement sur cet appareil. Sans connexion utilisateur, elle n’est pas protégée contre les autres personnes utilisant ce navigateur.</div>
+      <div class="notice"><b>Attention — note stockée localement.</b> Cette note n’est pas enregistrée dans la base Supabase de la démo. Elle reste uniquement dans ce navigateur et peut être perdue si vous changez d’appareil ou de navigateur, utilisez la navigation privée ou supprimez les données du site.</div>
       <form id="privateNoteForm"><label for="privateNote">Votre note sur ${esc(c.nom_complet)}</label><textarea id="privateNote" rows="10" placeholder="Écrivez votre note interne…">${esc(int.privateNote??'')}</textarea><div class="form-actions"><button class="btn primary" type="submit">Enregistrer la note</button></div><p id="privateNoteStatus" role="status"></p></form>
     </div>`;
   renderCompanyKpis(c.siren);
