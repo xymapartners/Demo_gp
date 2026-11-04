@@ -31,8 +31,19 @@ function clearConnectionRecord(siren) {
 function companyConnectionProfile(company) {
   const saved = getInternal(company.siren);
   const hasSavedSoftware = Object.hasOwn(saved, 'accountingSoftware');
+  const hasRemoteConnection = Object.hasOwn(saved, 'connectionStatus');
   const sample = hasSavedSoftware ? null : mapSample(company);
   const software = hasSavedSoftware ? accountingSoftware(company) : sample?.accounting || '';
+
+  if (hasRemoteConnection) {
+    return {
+      software,
+      source: hasSavedSoftware ? 'saved' : sample ? 'sample' : 'missing',
+      connected: saved.connectionStatus === 'connected',
+      syncedAt: saved.connectionSyncedAt || null
+    };
+  }
+
   const record = loadCompanyConnections()[company.siren];
   const matchingRecord = record?.software === software ? record : null;
   const seededDemo = !hasSavedSoftware && sample && connectionDemoExamples[company.siren] && !matchingRecord;
@@ -121,14 +132,28 @@ function keepConnectionVisible(siren) {
   document.getElementById('connectionSearch').value = '';
   selectedConnectionTool = '';
 }
-function updateConnectionStatus(siren, connected) {
+async function updateConnectionStatus(siren, connected) {
   const company = companies.find(item => item.siren === siren);
   if (!company) return;
   const profile = companyConnectionProfile(company);
   if (!profile.software) return;
+
   const connections = loadCompanyConnections();
-  connections[siren] = {software: profile.software, connected, syncedAt: connected ? new Date().toISOString() : profile.syncedAt};
+  connections[siren] = {software: profile.software, connected, syncedAt: connected ? new Date().toISOString() : null};
   saveCompanyConnections(connections);
+
+  const saved = getInternal(siren);
+  internal[siren] = {
+    ...saved,
+    connectionStatus: connected ? 'connected' : 'pending',
+    connectionSyncedAt: connected ? connections[siren].syncedAt : null
+  };
+  saveInternal();
+
+  await persistCompanyDemo(siren, {
+    connection_status: connected ? 'connected' : 'pending'
+  });
+
   keepConnectionVisible(siren);
   renderConnections();
   renderOverview();
@@ -155,7 +180,7 @@ function setupConnections() {
     document.getElementById('connectionCustomLabel').hidden = !custom;
     document.getElementById('connectionCustomSoftware').required = custom;
   });
-  document.getElementById('connectionDetail').addEventListener('submit', event => {
+  document.getElementById('connectionDetail').addEventListener('submit', async event => {
     if (event.target.id !== 'connectionSoftwareForm') return;
     event.preventDefault();
     const company = companies.find(item => item.siren === selectedConnectionSiren);
@@ -163,14 +188,32 @@ function setupConnections() {
     const selected = document.getElementById('connectionSoftwareSelect').value;
     const nextSoftware = selected === '__other__' ? document.getElementById('connectionCustomSoftware').value.trim() : selected;
     if (selected === '__other__' && !nextSoftware) return;
+
     const previous = accountingSoftware(company);
     const hadSavedSoftware = Object.hasOwn(getInternal(company.siren), 'accountingSoftware');
-    internal[company.siren] = {...getInternal(company.siren), accountingSoftware: nextSoftware};
+    const nextStatus = nextSoftware ? 'pending' : 'not_configured';
+
+    internal[company.siren] = {
+      ...getInternal(company.siren),
+      accountingSoftware: nextSoftware,
+      connectionStatus: nextStatus,
+      connectionSyncedAt: null
+    };
+
     if (previous !== nextSoftware || !hadSavedSoftware) clearConnectionRecord(company.siren);
     saveInternal();
+
+    const status = document.getElementById('connectionFormStatus');
+    status.textContent = 'Synchronisation…';
+    const result = await persistCompanyDemo(company.siren, {
+      accounting_software: nextSoftware || null,
+      connection_status: nextStatus
+    });
+
     keepConnectionVisible(company.siren);
     renderCompanies(); renderMap(); renderOverview(); renderConnections();
-    document.getElementById('connectionFormStatus').textContent = 'Logiciel enregistré dans le référentiel.';
+    const freshStatus = document.getElementById('connectionFormStatus');
+    if (freshStatus) freshStatus.textContent = result.remote ? 'Logiciel enregistré dans la démo partagée.' : 'Logiciel enregistré localement — synchronisation indisponible.';
   });
   document.getElementById('connectionDetail').addEventListener('click', event => {
     const connect = event.target.closest('[data-connection-connect]');
