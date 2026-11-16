@@ -78,8 +78,12 @@ function registerSoftwareType(type){
 function softwareOptions(options,selected){return options.map(value=>`<option value="${esc(value)}" ${selected===value?'selected':''}>${esc(value)}</option>`).join('')}
 function seeded(s, mod=1000){return [...String(s)].reduce((a,ch,i)=>a+(ch.charCodeAt(0)*(i+3)),17)%mod}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function internalAmount(value){if(value===undefined||value===null||value==='')return null;const amount=Number(value);return Number.isFinite(amount)&&amount>=0?amount:null}
+function currentEmployeeLabel(c){const count=internalAmount(getInternal(c.siren).effectif_interne);return count===null?employeeLabel(c):`${count.toLocaleString('fr-FR')} (interne)`}
 
 function annualRevenueBase(c){
+  const internalRevenue=internalAmount(getInternal(c.siren).ca_interne);
+  if(internalRevenue!==null)return internalRevenue;
   const pub=n(c.ca_public);
   if(pub && pub>0) return pub;
   const emp=employeeMid[c.tranche_effectif_salarie]||0;
@@ -96,8 +100,10 @@ function annualRevenueBase(c){
 }
 
 function simulatedFinance(c){
-  const saved=getInternal(c.siren); if(saved.simulatedFinance) return saved.simulatedFinance;
+  const saved=getInternal(c.siren);
   const annual=annualRevenueBase(c);
+  const objectiveInput=internalAmount(saved.objectif_ca);
+  if(saved.simulatedFinance?.annual===annual&&saved.simulatedFinance?.objectiveInput===objectiveInput&&saved.simulatedFinance?.monthly?.length===12)return saved.simulatedFinance;
   const seed=seeded(c.siren,10000);
   const trend=((seed%170)-65)/1000; // -6.5% à +10.4%
   const seasonalityBySec={G:[.88,.98,.92,.91,1.00,1.03,1.07,1.10,1.02,.86,1.05,1.15],I:[.93,1.08,.88,.91,.98,1.01,1.04,1.07,1.10,1.16,.98,.86],L:[.96,.98,.99,1.00,1.01,1.02,1.03,1.01,.98,.96,1.02,1.04],D:[1.02,1.06,1.03,1.02,1.00,.99,.96,.94,.95,.98,1.01,1.04],M:[.95,1.01,.98,.99,1.03,1.00,1.02,1.01,.97,.94,1.04,1.06]};
@@ -115,17 +121,18 @@ function simulatedFinance(c){
   });
   const ytd=monthly.slice(2).reduce((s,x)=>s+x.revenue,0);
   const priorYtd=monthly.slice(2).reduce((s,x)=>s+x.prior,0);
-  const objective=Math.round(ytd*(1.015+((seed%40)/1000)));
-  const finance={annual,monthly,ytd,priorYtd,objective,trend:(ytd/priorYtd-1)*100};
+  const objective=objectiveInput===null?Math.round(ytd*(1.015+((seed%40)/1000))):Math.round(objectiveInput*season.slice(2).reduce((total,weight)=>total+weight,0)/sum);
+  const finance={annual,monthly,ytd,priorYtd,objective,objectiveInput,trend:priorYtd?(ytd/priorYtd-1)*100:0};
   internal[c.siren]={...saved,simulatedFinance:finance}; saveInternal(); return finance;
 }
 
 function demoMetrics(c){
-  const saved=getInternal(c.siren); if(saved.demoMetrics)return saved.demoMetrics;
-  const f=simulatedFinance(c); const seed=seeded(c.siren,1000);
-  const caPerf=Math.round(f.ytd/f.objective*100); const margin=88+(seed*11)%24; const staffing=employeeMid[c.tranche_effectif_salarie]||10+(seed*13)%190;
-  const score=Math.round(caPerf*.55+margin*.25+Math.min(110,90+(seed%25))*.20);
-  const dm={caPerf,margin,staffing,score}; internal[c.siren]={...saved,demoMetrics:dm}; saveInternal(); return dm;
+  const saved=getInternal(c.siren),f=simulatedFinance(c),seed=seeded(c.siren,1000);
+  const staffing=internalAmount(saved.effectif_interne)??employeeMid[c.tranche_effectif_salarie]??(10+(seed*13)%190);
+  if(saved.demoMetrics?.metricVersion===2&&saved.demoMetrics?.financeYtd===f.ytd&&saved.demoMetrics?.financeObjective===f.objective&&saved.demoMetrics?.staffing===staffing)return saved.demoMetrics;
+  const caPerf=f.objective?Math.round(f.ytd/f.objective*100):0; const margin=88+(seed*11)%24;
+  const score=Math.round(clamp(caPerf*.55+margin*.25+Math.min(110,90+(seed%25))*.20,0,100));
+  const dm={caPerf,margin,staffing,score,financeYtd:f.ytd,financeObjective:f.objective,metricVersion:2}; internal[c.siren]={...getInternal(c.siren),demoMetrics:dm}; saveInternal(); return dm;
 }
 function statusFromScore(score){return score>=100?'green':score>=92?'orange':'red'}
 
@@ -147,7 +154,7 @@ function groupTotals(){
   const prior=active.reduce((s,c)=>s+simulatedFinance(c).priorYtd,0);
   const result=active.reduce((s,c)=>s+simulatedFinance(c).monthly.slice(2).reduce((a,m)=>a+m.result,0),0);
   const objective=active.reduce((s,c)=>s+simulatedFinance(c).objective,0);
-  return {active,ytd,prior,result,objective,growth:(ytd/prior-1)*100};
+  return {active,ytd,prior,result,objective,growth:prior?(ytd/prior-1)*100:0};
 }
 
 function sparkline(values,w=520,h=150){
@@ -158,11 +165,11 @@ function sparkline(values,w=520,h=150){
 
 function renderOverview(){
   const active=companies.filter(c=>c.etat_administratif==='A').length; const gt=groupTotals();
-  const cards=[['CA simulé 2026 à date',fmtMoney(gt.ytd),`${gt.growth>=0?'+':''}${gt.growth.toFixed(1)} % vs N-1`],['Résultat simulé',fmtMoney(gt.result),'Cumul janvier → octobre'],['Objectif groupe',fmtMoney(gt.objective),`${Math.round(gt.ytd/gt.objective*100)} % atteint`],['Sociétés actives',active,`${companies.length} sociétés dans le référentiel`]];
+  const cards=[['CA simulé 2026 à date',fmtMoney(gt.ytd),`${gt.growth>=0?'+':''}${gt.growth.toFixed(1)} % vs N-1`],['Résultat simulé',fmtMoney(gt.result),'Cumul janvier → octobre'],['Objectif groupe à date',fmtMoney(gt.objective),`${gt.objective?Math.round(gt.ytd/gt.objective*100):0} % atteint`],['Sociétés actives',active,`${companies.length} sociétés dans le référentiel`]];
   document.getElementById('overviewKpis').innerHTML=cards.map(x=>`<div class="kpi-card"><div class="kpi-label">${x[0]}</div><div class="kpi-value">${x[1]}</div><div class="kpi-note">${x[2]}</div></div>`).join('');
 
   const monthly=months.map((month,i)=>({month,revenue:gt.active.reduce((s,c)=>s+simulatedFinance(c).monthly[i].revenue,0),prior:gt.active.reduce((s,c)=>s+simulatedFinance(c).monthly[i].prior,0)}));
-  document.getElementById('groupTrend').innerHTML=`<div class="trend-summary"><div><span>CA octobre simulé</span><strong>${fmtMoney(monthly[11].revenue)}</strong></div><div><span>vs octobre N-1</span><strong class="${monthly[11].revenue>=monthly[11].prior?'positive':'negative'}">${((monthly[11].revenue/monthly[11].prior-1)*100).toFixed(1)} %</strong></div></div>${sparkline(monthly.map(x=>x.revenue))}<div class="month-axis">${months.map(m=>`<span>${m.replace(' 26','')}</span>`).join('')}</div>`;
+  document.getElementById('groupTrend').innerHTML=`<div class="trend-summary"><div><span>CA octobre simulé</span><strong>${fmtMoney(monthly[11].revenue)}</strong></div><div><span>vs octobre N-1</span><strong class="${monthly[11].revenue>=monthly[11].prior?'positive':'negative'}">${(monthly[11].prior?(monthly[11].revenue/monthly[11].prior-1)*100:0).toFixed(1)} %</strong></div></div>${sparkline(monthly.map(x=>x.revenue))}<div class="month-axis">${months.map(m=>`<span>${m.replace(' 26','')}</span>`).join('')}</div>`;
 
   document.getElementById('financialTop').innerHTML=companies.filter(c=>c.etat_administratif==='A').map(c=>({c,f:simulatedFinance(c)})).sort((a,b)=>b.f.ytd-a.f.ytd).slice(0,8).map(({c,f})=>`<tr data-siren="${c.siren}"><td><div class="company-name">${esc(c.nom_complet)}</div><div class="company-sub">${esc(sector(c))}</div></td><td class="money">${fmtMoney(f.ytd)}</td><td class="money ${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</td><td class="money">${fmtMoney(f.monthly.slice(2).reduce((s,m)=>s+m.result,0))}</td></tr>`).join('');
   document.querySelectorAll('#financialTop tr').forEach(r=>r.addEventListener('click',()=>openCompany(r.dataset.siren)));
@@ -188,7 +195,7 @@ function renderCompanies(){
   accountingFilter.value=available.includes(accounting)||accounting===''?accounting:'all';
   let rows=companies.filter(c=>{ const hay=[c.nom_complet,c.siren,c.siret_siege,c.ville,c.adresse,c.activite_principale,groupCategory(c),accountingSoftware(c),...otherSoftware(c).flatMap(item=>[item.type,item.name])].join(' ').toLowerCase(); const okMgr=mgr==='all'||(mgr==='robert'&&c.dirigeant_robert)||(mgr==='kevin'&&c.dirigeant_kevin)||(mgr==='both'&&c.dirigeant_robert&&c.dirigeant_kevin); return (!q||hay.includes(q))&&(st==='all'||c.etat_administratif===st)&&(sec==='all'||groupCategory(c)===sec)&&(accountingFilter.value==='all'||accountingSoftware(c)===accountingFilter.value)&&okMgr; });
   document.getElementById('companyCount').textContent=`${rows.length} / ${companies.length} sociétés`;
-  document.getElementById('companiesTable').innerHTML=rows.length?rows.map(c=>{const f=simulatedFinance(c); return `<tr data-siren="${c.siren}"><td><input type="checkbox" data-select-siren="${c.siren}" aria-label="Sélectionner ${esc(c.nom_complet)}" ${selectedCompanies.has(c.siren)?'checked':''}></td><td><div class="company-name">${esc(c.nom_complet)}</div><div class="company-sub">${esc(managerLabel(c))}</div></td><td>${c.siren}</td><td>${esc(groupCategory(c)||'À classer')}</td><td>${esc(accountingSoftware(c)||'Non renseigné')}</td><td><div>${esc(sector(c))}</div><div class="company-sub">${esc(c.activite_principale||'')}</div></td><td>${esc(c.ville||'N/D')}</td><td>${esc(employeeLabel(c))}</td><td class="money">${fmtMoney(f.ytd)}</td><td class="${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</td><td><span class="badge ${c.etat_administratif==='A'?'active':'closed'}">${c.etat_administratif==='A'?'Active':'Fermée'}</span></td><td>›</td></tr>`}).join(''):`<tr><td colspan="12" class="empty">Aucune société ne correspond aux filtres.</td></tr>`;
+  document.getElementById('companiesTable').innerHTML=rows.length?rows.map(c=>{const f=simulatedFinance(c); return `<tr data-siren="${c.siren}"><td><input type="checkbox" data-select-siren="${c.siren}" aria-label="Sélectionner ${esc(c.nom_complet)}" ${selectedCompanies.has(c.siren)?'checked':''}></td><td><div class="company-name">${esc(c.nom_complet)}</div><div class="company-sub">${esc(managerLabel(c))}</div></td><td>${c.siren}</td><td>${esc(groupCategory(c)||'À classer')}</td><td>${esc(accountingSoftware(c)||'Non renseigné')}</td><td><div>${esc(sector(c))}</div><div class="company-sub">${esc(c.activite_principale||'')}</div></td><td>${esc(c.ville||'N/D')}</td><td>${esc(currentEmployeeLabel(c))}</td><td class="money">${fmtMoney(f.ytd)}</td><td class="${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</td><td><span class="badge ${c.etat_administratif==='A'?'active':'closed'}">${c.etat_administratif==='A'?'Active':'Fermée'}</span></td><td>›</td></tr>`}).join(''):`<tr><td colspan="12" class="empty">Aucune société ne correspond aux filtres.</td></tr>`;
   document.querySelectorAll('#companiesTable tr[data-siren]').forEach(row=>row.addEventListener('click',e=>{if(e.target.closest('input'))return;openCompany(row.dataset.siren)}));
   document.querySelectorAll('#companiesTable input[data-select-siren]').forEach(input=>input.addEventListener('change',()=>{if(input.checked)selectedCompanies.add(input.dataset.selectSiren);else selectedCompanies.delete(input.dataset.selectSiren);updateCompanySelection(rows)}));
   updateCompanySelection(rows);
@@ -227,18 +234,18 @@ function groupKpis(list){
 }
 function mapCategory(c){return groupCategory(c)||'À classer'}
 function mapSample(c){return showMapSamples?mapSamples[c.siren]:null}
-function mapKpis(c){const saved=getInternal(c.siren);return Object.hasOwn(saved,'kpis')?saved.kpis||[]:mapSample(c)?.kpis||[]}
+function mapKpis(c){return [...(mapSample(c)?.kpis||[]),...(getInternal(c.siren).kpis||[])]}
 function mapAccounting(c){
   const saved=getInternal(c.siren);
   return Object.hasOwn(saved,'accountingSoftware')?accountingSoftware(c):mapSample(c)?.accounting||'';
 }
 function mapOtherSoftware(c){
-  const saved=getInternal(c.siren);
-  return Object.hasOwn(saved,'otherSoftware')?otherSoftware(c):mapSample(c)?.other||[];
+  const merged=[...(mapSample(c)?.other||[]),...otherSoftware(c)];
+  return merged.filter((item,index)=>merged.findIndex(candidate=>candidate.type===item.type&&candidate.name===item.name)===index);
 }
 function mapUsesSample(c){
   const sample=mapSample(c),saved=getInternal(c.siren);
-  return Boolean(sample&&(!Object.hasOwn(saved,'accountingSoftware')||!Object.hasOwn(saved,'otherSoftware')||!Object.hasOwn(saved,'kpis')));
+  return Boolean(sample&&(!Object.hasOwn(saved,'accountingSoftware')||sample.other?.length||sample.kpis?.length));
 }
 function mapFamilies(){
   const types=new Set([...availableSoftwareTypes(),...companies.flatMap(c=>mapOtherSoftware(c).map(item=>item.type))]);
@@ -380,14 +387,14 @@ function openCompany(siren){
 
       <div class="section-title">Suivi mensuel simulé</div>
       <div class="company-chart">${sparkline(f.monthly.map(x=>x.revenue),600,170)}<div class="month-axis">${months.map(m=>`<span>${m.split('.')[0]}</span>`).join('')}</div></div>
-      <div class="finance-grid"><div class="finance-card"><small>CA 2026 à date</small><strong>${fmtMoney(f.ytd)}</strong></div><div class="finance-card"><small>Évolution N-1</small><strong class="${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</strong></div><div class="finance-card"><small>Objectif</small><strong>${fmtMoney(f.objective)}</strong></div></div>
+      <div class="finance-grid"><div class="finance-card"><small>CA 2026 à date</small><strong>${fmtMoney(f.ytd)}</strong></div><div class="finance-card"><small>Évolution N-1</small><strong class="${f.trend>=0?'positive':'negative'}">${f.trend>=0?'+':''}${f.trend.toFixed(1)} %</strong></div><div class="finance-card"><small>Objectif à date</small><strong>${fmtMoney(f.objective)}</strong></div></div>
       <div class="table-wrap monthly"><table><thead><tr><th>Mois</th><th>CA simulé</th><th>CA N-1 simulé</th><th>Résultat simulé</th></tr></thead><tbody>${f.monthly.map(m=>`<tr><td>${m.month}</td><td class="money">${fmtMoney(m.revenue)}</td><td class="money">${fmtMoney(m.prior)}</td><td class="money ${m.result>=0?'positive':'negative'}">${fmtMoney(m.result)}</td></tr>`).join('')}</tbody></table></div>
 
       <div class="section-title">Données internes modifiables</div>
       <form class="edit-form" id="internalForm">
-        <label>Effectif actuel<input id="internalEmployees" type="number" value="${esc(int.effectif_interne??'')}" placeholder="Ex. 47"></label>
-        <label>CA interne annuel (€)<input id="internalRevenue" type="number" value="${esc(int.ca_interne??'')}" placeholder="Ex. 12500000"></label>
-        <label>Objectif CA (€)<input id="internalTarget" type="number" value="${esc(int.objectif_ca??'')}" placeholder="Ex. 13000000"></label>
+        <label>Effectif actuel<input id="internalEmployees" type="number" min="0" value="${esc(int.effectif_interne??'')}" placeholder="Ex. 47"></label>
+        <label>CA interne annuel (€)<input id="internalRevenue" type="number" min="0" value="${esc(int.ca_interne??'')}" placeholder="Ex. 12500000"></label>
+        <label>Objectif CA annuel (€)<input id="internalTarget" type="number" min="0" value="${esc(int.objectif_ca??'')}" placeholder="Ex. 13000000"></label>
         <label>Catégorie groupe<select id="internalCategory"><option value="">À classer</option>${softwareOptions(groupCategories,category)}</select></label>
         <label>Logiciel comptable<select id="accountingSelect"><option value="">Non renseigné</option>${softwareOptions(accountingSoftwareOptions,accounting)}<option value="other" ${accounting&&!knownAccounting?'selected':''}>Autre logiciel…</option></select></label>
         <label id="accountingCustomLabel" hidden>Nom du logiciel comptable<input id="accountingCustom" maxlength="80" value="${esc(accounting&&!knownAccounting?accounting:'')}" placeholder="Saisir un logiciel"></label>
@@ -424,10 +431,11 @@ function openCompany(siren){
     internal[c.siren]={...saved,effectif_interne:document.getElementById('internalEmployees').value,ca_interne:document.getElementById('internalRevenue').value,objectif_ca:document.getElementById('internalTarget').value,groupCategory:document.getElementById('internalCategory').value,accountingSoftware:nextAccounting,commentaire:document.getElementById('internalComment').value};
     if(previousAccounting!==nextAccounting || !Object.hasOwn(saved,'accountingSoftware'))clearConnectionRecord(c.siren);
     saveInternal();
-    document.getElementById('internalSaveStatus').textContent='Enregistré sur cet appareil.';
-    document.getElementById('drawerGroupCategory').textContent=groupCategory(c)||'À classer';
-    renderMapSampleNotice(c);
-    renderCompanies();renderOverview();renderMap();renderConnections();
+    renderCompanies();renderOverview();renderPerformance();renderMap();renderConnections();
+    const drawer=document.getElementById('companyDrawer'),scroll=drawer.scrollTop;
+    openCompany(c.siren);
+    drawer.scrollTop=scroll;
+    document.getElementById('internalSaveStatus').textContent='Enregistré et actualisé dans les vues du groupe.';
   });
   document.getElementById('otherSoftwareForm').addEventListener('submit',event=>{
     event.preventDefault();
@@ -489,6 +497,16 @@ function setupGlobal(){
   document.addEventListener('click',event=>{if(!event.target.closest('.map-search-wrap')){document.getElementById('mapSearchResults').hidden=true;document.getElementById('mapSearch').setAttribute('aria-expanded','false')}});
   document.querySelectorAll('[data-map-mode]').forEach(button=>button.addEventListener('click',()=>{mapMode=button.dataset.mapMode;mapGroup=null;mapSoftware=null;mapCompany=null;document.getElementById('mapSearch').value='';renderMap()}));
   document.getElementById('mapSampleToggle').addEventListener('change',event=>{showMapSamples=event.target.checked;mapGroup=null;mapSoftware=null;mapCompany=null;renderMap();renderConnections();renderOverview()});
+  window.addEventListener('storage',event=>{
+    if(![STORAGE_KEY,SOFTWARE_TYPES_KEY,COMPANY_CONNECTIONS_KEY].includes(event.key))return;
+    if(event.key===STORAGE_KEY)internal=loadInternal();
+    renderOverview();renderCompanies();renderPerformance();renderMap();renderConnections();
+    if(currentCompany&&document.getElementById('companyDrawer').classList.contains('open')){
+      const drawer=document.getElementById('companyDrawer'),scroll=drawer.scrollTop;
+      openCompany(currentCompany.siren);
+      drawer.scrollTop=scroll;
+    }
+  });
   window.addEventListener('resize',mapDrawLinks);
   document.getElementById('exportBtn').addEventListener('click',()=>{const payload=companies.map(c=>({...c,simulation:simulatedFinance(c),internal:getInternal(c.siren)}));const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='groupe-parfait-demo-enrichie.json';a.click();URL.revokeObjectURL(a.href);});
 }
