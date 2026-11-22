@@ -56,3 +56,5 @@ Si l'API est placée sur un sous-domaine séparé, définir `ALLOWED_ORIGIN` ave
 Les valeurs KPI, logiciels, objectifs et connexions sont des données de démonstration. Le Worker n'établit aucune connexion réelle avec un logiciel comptable, une banque ou un SI client.
 
 <!-- Cloudflare production branch: demo-local-storage-warnings -->
+
+<!-- Cloudflare production branch: demo-local-storage-warnings | build trigger 2 -->
