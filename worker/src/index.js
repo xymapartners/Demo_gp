@@ -154,8 +154,7 @@ const ROLE_PATCH_FIELDS = Object.freeze({
     "commentaire",
     "accounting_software",
     "other_software",
-    "kpis",
-    "connection_status"
+    "kpis"
   ]),
   parfait_admin: new Set([
     "effectif_interne",
