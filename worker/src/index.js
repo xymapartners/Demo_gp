@@ -146,39 +146,89 @@ function json(data, status = 200, headers = {}) {
   });
 }
 
-function parseEmailList(value) {
-  return new Set(
-    String(value || "")
-      .split(",")
-      .map((item) => item.trim().toLowerCase())
-      .filter(Boolean)
-  );
-}
+const ROLE_PATCH_FIELDS = Object.freeze({
+  xyma_admin: new Set([
+    "effectif_interne",
+    "objectif_ca",
+    "categorie_groupe",
+    "commentaire",
+    "accounting_software",
+    "other_software",
+    "kpis",
+    "connection_status"
+  ]),
+  parfait_admin: new Set([
+    "effectif_interne",
+    "objectif_ca",
+    "categorie_groupe",
+    "commentaire",
+    "accounting_software",
+    "other_software",
+    "kpis"
+  ]),
+  company_manager: new Set([
+    "effectif_interne",
+    "commentaire",
+    "accounting_software",
+    "other_software",
+    "connection_status"
+  ])
+});
 
 async function getIdentity(ctx, env) {
   if (!ctx.access) {
     throw new Response("Cloudflare Access requis.", { status: 403 });
   }
 
-  const identity = await ctx.access.getIdentity();
-  const email = String(identity?.email || "").trim().toLowerCase();
+  const cloudflareIdentity = await ctx.access.getIdentity();
+  const email = String(cloudflareIdentity?.email || "").trim().toLowerCase();
 
   if (!email) {
     throw new Response("Identité Cloudflare Access introuvable.", { status: 403 });
   }
 
-  const xymaAdmins = parseEmailList(env.XYMA_ADMIN_EMAILS);
-  const parfetAdmins = parseEmailList(env.PARFET_ADMIN_EMAILS);
+  const rows = await supabase(
+    env,
+    `demo_user_access?email=eq.${encodeURIComponent(email)}&active=eq.true&select=email,role,siren`
+  );
 
-  if (xymaAdmins.has(email)) {
-    return { email, role: "xyma_admin" };
+  const access = rows?.[0];
+  if (!access) {
+    throw new Response("Utilisateur non autorisé pour la démo.", { status: 403 });
   }
 
-  if (parfetAdmins.has(email)) {
-    return { email, role: "parfet_admin" };
+  if (!Object.prototype.hasOwnProperty.call(ROLE_PATCH_FIELDS, access.role)) {
+    throw new Response("Rôle applicatif invalide.", { status: 403 });
   }
 
-  throw new Response("Utilisateur non autorisé pour la démo.", { status: 403 });
+  if (access.role === "company_manager" && !access.siren) {
+    throw new Response("Aucune société associée à ce compte.", { status: 403 });
+  }
+
+  return {
+    email: access.email,
+    role: access.role,
+    siren: access.siren || null
+  };
+}
+
+function assertCompanyScope(identity, siren) {
+  if (identity.role === "company_manager" && identity.siren !== siren) {
+    throw new Response("Accès interdit à cette société.", { status: 403 });
+  }
+}
+
+function assertPatchAllowed(identity, body) {
+  const allowed = ROLE_PATCH_FIELDS[identity.role];
+
+  for (const key of Object.keys(body || {})) {
+    if (!allowed?.has(key)) {
+      throw new Response(
+        `Modification interdite pour le rôle ${identity.role} : ${key}`,
+        { status: 403 }
+      );
+    }
+  }
 }
 
 function corsHeaders(request, env) {
@@ -441,11 +491,38 @@ async function getCompany(env, siren) {
 async function handleSession(identity) {
   return json({
     email: identity.email,
-    role: identity.role
+    role: identity.role,
+    siren: identity.siren
   });
 }
 
-async function handleCompanies(env) {
+async function handleCompanies(env, identity) {
+  if (identity.role === "company_manager") {
+    const siren = assertSiren(identity.siren);
+
+    const [companies, states] = await Promise.all([
+      supabase(
+        env,
+        `companies?siren=eq.${encodeURIComponent(siren)}&select=*&order=nom_complet.asc`
+      ),
+      supabase(
+        env,
+        `company_demo_state?siren=eq.${encodeURIComponent(siren)}&select=*`
+      )
+    ]);
+
+    const stateBySiren = new Map(
+      (states || []).map((state) => [state.siren, state])
+    );
+
+    return json(
+      (companies || []).map((company) => ({
+        ...company,
+        demo_state: stateBySiren.get(company.siren) || null
+      }))
+    );
+  }
+
   const [companies, states] = await Promise.all([
     supabase(env, "companies?select=*&order=nom_complet.asc"),
     supabase(env, "company_demo_state?select=*")
@@ -464,7 +541,11 @@ async function handleCompanies(env) {
 }
 
 async function handlePatchCompany(request, env, identity, siren) {
+  assertCompanyScope(identity, siren);
+
   const body = await readJsonBody(request);
+  assertPatchAllowed(identity, body);
+
   const patch = normalizePatch(body, identity.email);
 
   if (Object.keys(patch).length === 1) {
@@ -594,7 +675,7 @@ export default {
           response = await handleSession(identity);
           break;
         case "companies":
-          response = await handleCompanies(env);
+          response = await handleCompanies(env, identity);
           break;
         case "patchCompany":
           response = await handlePatchCompany(
