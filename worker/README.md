@@ -1,4 +1,4 @@
-# API Cloudflare Worker — démo Groupe Parfet
+# API Cloudflare Worker — démo Groupe Parfait
 
 Cette API est volontairement limitée à la démo.
 
@@ -14,12 +14,14 @@ Cette API est volontairement limitée à la démo.
 
 Cloudflare Access doit protéger directement le Worker. Le Worker refuse les requêtes si `ctx.access` ne contient pas une identité Access valide.
 
-Deux listes d'adresses e-mail définissent les rôles applicatifs :
+Les rôles applicatifs sont lus dans la table Supabase `demo_user_access`.
 
-- `XYMA_ADMIN_EMAILS`
-- `PARFET_ADMIN_EMAILS`
+Cloudflare Access authentifie d'abord l'utilisateur. Le Worker utilise ensuite son e-mail pour récupérer :
+- `xyma_admin` : accès groupe + fonctions techniques de démo ;
+- `parfait_admin` : pilotage métier du groupe ;
+- `company_manager` : accès limité au SIREN associé.
 
-Même si Cloudflare Access autorise quelqu'un à atteindre le Worker, son e-mail doit aussi être présent dans l'une de ces listes.
+Le filtrage du `company_manager` est appliqué côté serveur : manipuler l'URL ou appeler directement l'API ne permet pas d'accéder aux données internes d'une autre société.
 
 Le Worker utilise `SUPABASE_SECRET_KEY` uniquement côté serveur. Cette clé ne doit jamais être présente dans le JavaScript du navigateur, dans GitHub, ni dans un fichier versionné.
 
@@ -27,8 +29,6 @@ Le Worker utilise `SUPABASE_SECRET_KEY` uniquement côté serveur. Cette clé ne
 
 - `SUPABASE_URL`
 - `SUPABASE_SECRET_KEY` — secret
-- `XYMA_ADMIN_EMAILS`
-- `PARFET_ADMIN_EMAILS`
 - `ALLOWED_ORIGIN` — facultatif si même origin
 
 ## Mise en place
@@ -40,9 +40,9 @@ Le Worker utilise `SUPABASE_SECRET_KEY` uniquement côté serveur. Cette clé ne
 5. Déployer ce Worker depuis Cloudflare.
 6. Ajouter les variables et secrets ci-dessus dans les paramètres du Worker.
 7. Protéger le hostname/chemin du Worker avec Cloudflare Access.
-8. Autoriser les 3 comptes XYMA et le compte administrateur Parfet dans Access.
-9. Renseigner les mêmes e-mails dans `XYMA_ADMIN_EMAILS` et `PARFET_ADMIN_EMAILS`.
-10. Tester `/api/session`, puis `/api/companies`.
+8. Autoriser les 3 comptes XYMA, le compte administrateur Parfait et le compte Company Manager de démonstration dans Access.
+9. Enregistrer les cinq identités dans `public.demo_user_access`.
+10. Tester `/api/session`, puis `/api/companies` avec chacun des trois rôles.
 
 ## Routage recommandé
 
