@@ -8,7 +8,7 @@
 --
 -- Rôles :
 --   * xyma_admin      : accès XYMA complet
---   * parfet_admin    : vue groupe Groupe Parfet
+--   * parfait_admin    : vue groupe Groupe Parfet
 --   * company_manager : vue limitée à une seule société
 --
 -- Règle métier :
@@ -30,7 +30,7 @@ create table if not exists public.demo_user_access (
     check (
       role in (
         'xyma_admin',
-        'parfet_admin',
+        'parfait_admin',
         'company_manager'
       )
     ),
@@ -49,7 +49,7 @@ create table if not exists public.demo_user_access (
     check (
       (role = 'company_manager' and siren is not null)
       or
-      (role in ('xyma_admin', 'parfet_admin') and siren is null)
+      (role in ('xyma_admin', 'parfait_admin') and siren is null)
     )
 );
 
@@ -108,5 +108,5 @@ commit;
 -- Les cinq identités de démonstration seront ajoutées après
 -- validation de leurs adresses e-mail :
 --   3 x xyma_admin
---   1 x parfet_admin
+--   1 x parfait_admin
 --   1 x company_manager + SIREN d'une société exemple
