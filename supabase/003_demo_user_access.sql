@@ -8,7 +8,7 @@
 --
 -- Rôles :
 --   * xyma_admin      : accès XYMA complet
---   * parfait_admin    : vue groupe Groupe Parfet
+--   * parfait_admin    : vue groupe Groupe Parfait
 --   * company_manager : vue limitée à une seule société
 --
 -- Règle métier :
