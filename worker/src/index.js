@@ -404,7 +404,7 @@ function normalizePatch(body, actorEmail) {
 
   for (const key of Object.keys(body)) {
     if (!ALLOWED_PATCH_FIELDS.has(key)) {
-      throw new Response(\`Champ non modifiable dans la démo : \${key}\`, { status: 400 });
+      throw new Response(`Champ non modifiable dans la démo : ${key}`, { status: 400 });
     }
   }
 
@@ -458,7 +458,7 @@ async function supabase(env, path, options = {}) {
   }
 
   const base = String(env.SUPABASE_URL).replace(/\/+$/, "");
-  const response = await fetch(\`\${base}/rest/v1/\${path}\`, {
+  const response = await fetch(`${base}/rest/v1/${path}`, {
     ...options,
     headers: {
       "apikey": env.SUPABASE_SECRET_KEY,
@@ -470,7 +470,7 @@ async function supabase(env, path, options = {}) {
   if (!response.ok) {
     const detail = await response.text();
     console.error("Supabase error", response.status, detail);
-    throw new Error(\`Supabase \${response.status}\`);
+    throw new Error(`Supabase ${response.status}`);
   }
 
   if (response.status === 204) return null;
@@ -482,7 +482,7 @@ async function supabase(env, path, options = {}) {
 async function getCompany(env, siren) {
   const rows = await supabase(
     env,
-    \`companies?siren=eq.\${encodeURIComponent(siren)}&select=*\`
+    `companies?siren=eq.${encodeURIComponent(siren)}&select=*`
   );
   return rows?.[0] || null;
 }
@@ -553,7 +553,7 @@ async function handlePatchCompany(request, env, identity, siren) {
 
   const rows = await supabase(
     env,
-    \`company_demo_state?siren=eq.\${encodeURIComponent(siren)}\`,
+    `company_demo_state?siren=eq.${encodeURIComponent(siren)}`,
     {
       method: "PATCH",
       headers: { "prefer": "return=representation" },
@@ -581,7 +581,7 @@ async function handleResetCompany(env, identity, siren) {
   const baseline = baselineForCompany(company, identity.email);
   const rows = await supabase(
     env,
-    \`company_demo_state?siren=eq.\${encodeURIComponent(siren)}\`,
+    `company_demo_state?siren=eq.${encodeURIComponent(siren)}`,
     {
       method: "PATCH",
       headers: { "prefer": "return=representation" },
